@@ -118,7 +118,7 @@ managerRoute.post("/", authMiddleware, roleMiddleware(["admin"]), async (req, re
       password: req.body.password,
       role: "manager",
     });
-    const newManager = new db.Account(manager);
+    const newManager = await manager.save(); // Save the manager to the database
     res.status(201).json(newManager);
   } catch (error) {
     res.status(500).json({ message: error.message });
