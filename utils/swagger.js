@@ -12,7 +12,7 @@ const options = {
     },
     servers: [
       {
-        url: "https://mma-skincare.onrender.com", // Base URL for your API
+        url: "https://mma-skincare.onrender.com/", // Base URL for your API
       },
     ],
     components: {
