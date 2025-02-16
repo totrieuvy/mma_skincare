@@ -180,6 +180,71 @@ orderRoute.post("/add-to-cart", authMiddleware, roleMiddleware(["customer"]), as
   }
 });
 
+orderRoute.get("/vnpay-return", async (req, res) => {
+  try {
+    const { vnp_ResponseCode, vnp_TxnRef } = req.query;
+
+    if (vnp_ResponseCode === "00") {
+      // Thanh toán thành công, cập nhật trạng thái đơn hàng thành "Paid"
+      // Sử dụng populate để lấy thông tin sản phẩm và tài khoản (bao gồm email)
+      const order = await db.Order.findByIdAndUpdate(vnp_TxnRef, { status: "Paid" }, { new: true })
+        .populate("items.product")
+        .populate("account");
+
+      if (!order) {
+        return res.redirect("https://yourwebsite.com/payment-failed");
+      }
+
+      // Chuẩn bị dữ liệu cho email template
+      const itemsFormatted = order.items.map((item) => ({
+        productName: item.product.name,
+        quantity: item.quantity,
+        price: item.product.price,
+      }));
+
+      const templatePath = path.join(__dirname, "../templates/orderConfirmationTemplate.html");
+      const templateSource = fs.readFileSync(templatePath, "utf8");
+      const template = handlebars.compile(templateSource);
+
+      const htmlToSend = template({
+        orderId: order._id,
+        totalAmount: order.totalAmount,
+        items: itemsFormatted,
+      });
+
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+      });
+
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: order.account.email,
+        subject: "Order Confirmation",
+        html: htmlToSend,
+      };
+
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error("Lỗi gửi email:", error);
+        } else {
+          console.log("Email được gửi thành công:", info.response);
+        }
+      });
+
+      return res.redirect("https://www.facebook.com/");
+    } else {
+      return res.redirect("https://www.facebook.com/");
+    }
+  } catch (error) {
+    console.error("Lỗi xử lý VNPay return:", error);
+    res.status(500).json({ message: "Server error.", error: error.message });
+  }
+});
+
 /**
  * @swagger
  * /api/order/account/{id}:
@@ -314,23 +379,6 @@ orderRoute.post("/cancel-order/:orderId", authMiddleware, async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ message: "Lỗi máy chủ", error: error.message });
-  }
-});
-
-orderRoute.get("/vnpay-return", async (req, res) => {
-  try {
-    const { vnp_ResponseCode, vnp_TxnRef } = req.query;
-
-    if (vnp_ResponseCode === "00") {
-      // "00" indicates successful payment
-      await db.Order.findByIdAndUpdate(vnp_TxnRef, { status: "Paid" });
-
-      return res.redirect("https://yourwebsite.com/payment-success");
-    } else {
-      return res.redirect("https://yourwebsite.com/payment-failed");
-    }
-  } catch (error) {
-    res.status(500).json({ message: "Server error.", error: error.message });
   }
 });
 
