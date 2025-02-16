@@ -107,7 +107,7 @@ const orderRoute = express.Router();
  */
 orderRoute.post("/add-to-cart", authMiddleware, roleMiddleware(["customer"]), async (req, res) => {
   try {
-    const { account, items, promotion = "None" } = req.body; // Set default value for promotion
+    const { account, items, promotion } = req.body; // Set default value for promotion
 
     if (!account || !items || items.length === 0) {
       return res.status(400).json({ message: "An order must contain at least one product." });
@@ -142,7 +142,7 @@ orderRoute.post("/add-to-cart", authMiddleware, roleMiddleware(["customer"]), as
     const newOrder = new db.Order({
       account,
       items,
-      promotion,
+      promotion: promotion || null,
       totalAmount,
       status: "Pending",
     });
