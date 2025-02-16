@@ -134,9 +134,11 @@ managerRoute.post("/", authMiddleware, roleMiddleware(["admin"]), async (req, re
       phone: req.body.phone,
       username: req.body.username,
       password: req.body.password,
-      role: "manager",
     });
-    const newManager = await manager.save(); // Save the manager to the database
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newManager = new db.Account({ email, phone, password: hashedPassword, username, role: "manager" });
+    await newManager.save();
     res.status(201).json(newManager);
   } catch (error) {
     res.status(500).json({ message: error.message });
