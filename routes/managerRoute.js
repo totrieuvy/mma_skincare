@@ -2,6 +2,7 @@ const express = require("express");
 const db = require("../models/index");
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
+const bcrypt = require("bcryptjs");
 
 const managerRoute = express.Router();
 
@@ -129,15 +130,21 @@ managerRoute.get("/:id", authMiddleware, roleMiddleware(["admin"]), async (req, 
  */
 managerRoute.post("/", authMiddleware, roleMiddleware(["admin"]), async (req, res) => {
   try {
-    const manager = new db.Account({
-      email: req.body.email,
-      phone: req.body.phone,
-      username: req.body.username,
-      password: req.body.password,
+    const { email, phone, username, password } = req.body;
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create a new manager with the hashed password
+    const newManager = new db.Account({
+      email,
+      phone,
+      username,
+      password: hashedPassword,
+      role: "manager",
     });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newManager = new db.Account({ email, phone, password: hashedPassword, username, role: "manager" });
+    // Save the new manager to the database
     await newManager.save();
     res.status(201).json(newManager);
   } catch (error) {
