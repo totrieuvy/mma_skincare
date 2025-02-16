@@ -99,7 +99,24 @@ managerRoute.get("/:id", authMiddleware, roleMiddleware(["admin"]), async (req, 
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Account'
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 description: The email of the manager
+ *                 example: manager@example.com
+ *               phone:
+ *                 type: string
+ *                 description: The phone number of the manager
+ *                 example: "123-456-7890"
+ *               username:
+ *                 type: string
+ *                 description: The username of the manager
+ *                 example: manager123
+ *               password:
+ *                 type: string
+ *                 description: The password of the manager
+ *                 example: "password123"
  *     responses:
  *       201:
  *         description: Manager created successfully
@@ -115,6 +132,7 @@ managerRoute.post("/", authMiddleware, roleMiddleware(["admin"]), async (req, re
     const manager = new db.Account({
       email: req.body.email,
       phone: req.body.phone,
+      username: req.body.username,
       password: req.body.password,
       role: "manager",
     });
