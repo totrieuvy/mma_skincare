@@ -107,7 +107,7 @@ const orderRoute = express.Router();
  */
 orderRoute.post("/add-to-cart", authMiddleware, roleMiddleware(["customer"]), async (req, res) => {
   try {
-    const { account, items, promotion } = req.body; // Set default value for promotion
+    const { account, items } = req.body;
 
     if (!account || !items || items.length === 0) {
       return res.status(400).json({ message: "An order must contain at least one product." });
@@ -133,18 +133,15 @@ orderRoute.post("/add-to-cart", authMiddleware, roleMiddleware(["customer"]), as
       updatedProducts.push(product);
     }
 
-    // Save product stock changes
     for (const product of updatedProducts) {
       await product.save();
     }
 
-    // Create order with status "Pending"
     const newOrder = new db.Order({
       account,
       items,
-      promotion: promotion || null,
       totalAmount,
-      status: "Pending",
+      status: "Paid",
     });
 
     await newOrder.save();
@@ -168,79 +165,55 @@ orderRoute.post("/add-to-cart", authMiddleware, roleMiddleware(["customer"]), as
       vnp_TxnRef: newOrder._id.toString(),
       vnp_OrderInfo: `${newOrder._id}`,
       vnp_OrderType: ProductCode.Other,
-      vnp_ReturnUrl: `https://yourwebsite.com/vnpay-return?orderId=${newOrder._id}`,
+      vnp_ReturnUrl: "https://www.facebook.com/",
       vnp_Locale: VnpLocale.VN,
       vnp_CreateDate: dateFormat(new Date()),
       vnp_ExpireDate: dateFormat(tomorrow),
     });
 
-    return res.status(201).json({ vnpayResponse, orderId: newOrder._id });
-  } catch (error) {
-    res.status(500).json({ message: "Server error.", error: error.message });
-  }
-});
+    const populatedOrder = await db.Order.findById(newOrder._id).populate("items.product").exec();
 
-orderRoute.get("/vnpay-return", async (req, res) => {
-  try {
-    const { vnp_ResponseCode, vnp_TxnRef } = req.query;
+    const formattedItems = populatedOrder.items.map((item) => ({
+      productName: item.product?.name || "Unknown Product",
+      price: item.product?.price || 0,
+      quantity: item.quantity,
+    }));
 
-    if (vnp_ResponseCode === "00") {
-      // Thanh toán thành công, cập nhật trạng thái đơn hàng thành "Paid"
-      // Sử dụng populate để lấy thông tin sản phẩm và tài khoản (bao gồm email)
-      const order = await db.Order.findByIdAndUpdate(vnp_TxnRef, { status: "Paid" }, { new: true })
-        .populate("items.product")
-        .populate("account");
+    const emailTemplatePath = path.join(__dirname, "../templates/orderConfirmationTemplate.html");
+    const emailTemplateSource = fs.readFileSync(emailTemplatePath, "utf8");
+    const emailTemplate = handlebars.compile(emailTemplateSource);
 
-      if (!order) {
-        return res.redirect("https://yourwebsite.com/payment-failed");
+    const emailHtml = emailTemplate({
+      orderId: newOrder._id,
+      totalAmount: totalAmount,
+      items: formattedItems,
+    });
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: accountDetails.email,
+      subject: "Order Confirmation",
+      html: emailHtml,
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email:", error);
+      } else {
+        console.log("Email sent:", info.response);
       }
+    });
 
-      // Chuẩn bị dữ liệu cho email template
-      const itemsFormatted = order.items.map((item) => ({
-        productName: item.product.name,
-        quantity: item.quantity,
-        price: item.product.price,
-      }));
-
-      const templatePath = path.join(__dirname, "../templates/orderConfirmationTemplate.html");
-      const templateSource = fs.readFileSync(templatePath, "utf8");
-      const template = handlebars.compile(templateSource);
-
-      const htmlToSend = template({
-        orderId: order._id,
-        totalAmount: order.totalAmount,
-        items: itemsFormatted,
-      });
-
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      });
-
-      const mailOptions = {
-        from: process.env.EMAIL_USER,
-        to: order.account.email,
-        subject: "Order Confirmation",
-        html: htmlToSend,
-      };
-
-      transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-          console.error("Lỗi gửi email:", error);
-        } else {
-          console.log("Email được gửi thành công:", info.response);
-        }
-      });
-
-      return res.redirect("https://www.facebook.com/");
-    } else {
-      return res.redirect("https://www.facebook.com/");
-    }
+    return res.status(201).json(vnpayResponse);
   } catch (error) {
-    console.error("Lỗi xử lý VNPay return:", error);
     res.status(500).json({ message: "Server error.", error: error.message });
   }
 });
